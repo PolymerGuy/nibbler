@@ -14,6 +14,9 @@ def insert_object(body, domain, num=1, min_spacing=10):
         print("First vector:",evec[:,0])
         print("length:",eval/20.)
 
+        print(np.dot(eval[0], evec[:, 0]))
+        print(np.dot(eval[1], evec[:, 1]))
+
 
         if min_spacing > 0:
             thing_dil = np.pad(thing_dil, min_spacing, mode="constant")
@@ -53,6 +56,7 @@ def find_principal_axes(body):
 
     cov = np.cov(coords)
     evals, evecs = np.linalg.eig(cov)
+
 
     return evals, evecs
 
