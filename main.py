@@ -4,9 +4,12 @@ import scipy.ndimage as nd
 
 
 def determine_shape(body):
-    evals, evecs = find_principal_axes(body)
-    angle = np.arctan(evecs[1,0]/evecs[0,0])
+    evals, evecs = find_principal_axes(body.astype(np.float64))
+    angle = np.arctan(evecs[1,np.argmax(evals)]/evecs[0,np.argmax(evals)])
     aligned_body = nd.rotate(body,np.rad2deg(angle))
+    #aligned_body[aligned_body < 1e-3] = 0
+    aligned_body = aligned_body.astype(np.int)
+
 
     length, height = determine_dimensions(aligned_body)
 
@@ -18,8 +21,7 @@ def determine_dimensions(body):
     https://alyssaq.github.io/2015/computing-the-axes-or-orientation-of-a-blob/
     """
 
-    body[body < 1e-3] = 0
-
+    body[body<1e-2] = 0
     y, x = np.nonzero(body)
     y = np.float64(y)
     x = np.float64(x)
@@ -28,6 +30,10 @@ def determine_dimensions(body):
     length = x.max()-x.min()
     height = y.max()-y.min()
 
+    if length<200:
+        plt.imshow(body)
+        plt.show()
+
     return length, height
 
 
@@ -35,8 +41,10 @@ def insert_object(body, domain, num=1, min_spacing=10):
     n, m = domain.shape
     n_inserted = 0
 
+    shapes_inserted = []
+
     for i in range(num):
-        thing_dil = body()
+        thing_dil, shape = body()
         thing = thing_dil.copy()
 
         if min_spacing > 0:
@@ -63,10 +71,10 @@ def insert_object(body, domain, num=1, min_spacing=10):
             pos_m + min_spacing:pos_m + min_spacing + thing_m] = domain[
                                                                  pos_n + min_spacing:pos_n + min_spacing + thing_n,
                                                                  pos_m + min_spacing:pos_m + min_spacing + thing_m] + thing
-
+            shapes_inserted.append(shape)
 
     print("Inserted %i object into the microstructure" % n_inserted)
-    return domain, None
+    return domain, np.array(shapes_inserted)
 
 
 def find_principal_axes(body):
@@ -106,7 +114,7 @@ class Block(object):
         angle = np.random.rand() * (self.angle[1] - self.angle[0]) + self.angle[0]
 
         rect = np.ones((length, length * aspect))
-        return nd.rotate(rect, angle)
+        return nd.rotate(rect, angle), (length*aspect,aspect,angle)
 
 
 class MicroStructure(object):
@@ -126,8 +134,13 @@ def characterise_microstructure(domain):
     labeled_domain,n = nd.label(domain_bin)
     features = nd.find_objects(labeled_domain)
 
-    for feature in features:
-        shape.append(determine_shape(domain[feature]))
+
+    for i,feature in enumerate(features):
+        feature_domain = labeled_domain[feature].astype(np.int)
+        # Remove any other features within the frame
+        feature_domain[feature_domain!=i+1] = 0
+
+        shape.append(determine_shape(feature_domain.astype(np.bool)))
 
     shape = np.array(shape)
 
@@ -136,8 +149,6 @@ def characterise_microstructure(domain):
     length_dist = np.histogram(shape[:,0])
     aspect_dist = np.histogram(shape[:,0]/shape[:,1])
 
-    plt.hist(shape[:,2])
-    plt.show()
 
 
     print(length_dist)
@@ -146,20 +157,24 @@ def characterise_microstructure(domain):
 
 
 def run():
-    domain_size = (1000, 1000)
+    domain_size = (5000, 5000)
     domain = np.zeros(domain_size)
 
     # geom = Block(length=(10, 20), aspect=(5, 10), angle=(0., 0))
-    geom = Block(length=(10, 20), aspect=(5, 6), angle=(0, 20))
+    geom = Block(length=(60, 80), aspect=(5, 6), angle=(45, 45))
     n_geoms = 8000
 
-    domain_with_stuff,stats = insert_object(geom, domain, num=n_geoms, min_spacing=20)
+    domain_with_stuff,stats_true = insert_object(geom, domain, num=n_geoms, min_spacing=20)
 
 
 
 
-    stats = characterise_microstructure(domain_with_stuff)
-    print(stats.__dict__)
+    stats_guess = characterise_microstructure(domain_with_stuff)
+
+    plt.hist(stats_true[:,0],bins=50,label="correct",alpha=0.7)
+    plt.hist(stats_guess.length_dist,bins=50,label="guessed",alpha=0.7)
+    plt.legend()
+    plt.show()
 
     plt.imshow(domain_with_stuff, cmap=plt.cm.gray)
     plt.show()
